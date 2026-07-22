@@ -251,12 +251,15 @@
 
                 const idxOp = findIdx(['operador', 'operator', 'empresa', 'proveedor']);
                 const idxTour = findIdx(['tour', 'parque', 'servicio', 'actividad', 'nombre', 'producto']);
+                const idxPasajero = findIdx(['tipo de pasajero', 'pasajero', 'tipo pasajero', 'categoria pasajero', 'tipo']);
                 
-                const idxIntAdulto = findIdx(['int adulto', 'extranjero adulto', 'internacional adulto', 'precio int', 'precio internacional']);
-                const idxIntMenor = findIdx(['int menor', 'int niño', 'extranjero menor', 'internacional menor']);
+                const idxIntAdulto = findIdx(['int adulto', 'extranjero adulto', 'internacional adulto', 'precio int adulto']);
+                const idxIntMenor = findIdx(['int menor', 'int niño', 'extranjero menor', 'internacional menor', 'precio int menor']);
+                const idxIntGen = findIdx(['precio internacional', 'internacional', 'precio int', 'extranjero']);
 
-                const idxNacAdulto = findIdx(['nac adulto', 'mexicano adulto', 'nacional adulto', 'precio nac', 'precio nacional']);
-                const idxNacMenor = findIdx(['nac menor', 'nac niño', 'mexicano menor', 'nacional menor']);
+                const idxNacAdulto = findIdx(['nac adulto', 'mexicano adulto', 'nacional adulto', 'precio nac adulto']);
+                const idxNacMenor = findIdx(['nac menor', 'nac niño', 'mexicano menor', 'nacional menor', 'precio nac menor']);
+                const idxNacGen = findIdx(['precio nacional', 'nacional', 'precio nac', 'mexicano']);
 
                 const idxAdulto = findIdx(['adulto', 'adult']);
                 const idxMenor = findIdx(['menor', 'niño', 'child']);
@@ -268,54 +271,94 @@
                 const idxNota2 = findIdx(['nota 2', 'notas 2', 'nota2', 'notas2']);
                 const idxNotaGen = findIdx(['nota', 'notas', 'observacion', 'observaciones', 'impuesto']);
 
-                const parsed = [];
+                const toursMap = new Map();
 
                 for (let i = 1; i < lines.length; i++) {
                     const cols = lines[i].split('\t').map(c => c.trim().replace(/^"|"$/g, ''));
                     if (cols.length === 0 || !cols[0]) continue;
 
-                    const op = cleanVal((idxOp >= 0 && cols[idxOp]) ? cols[idxOp] : cols[0]);
+                    const op = cleanVal((idxOp >= 0 && cols[idxOp]) ? cols[idxOp] : cols[0]) || 'Operador';
                     const tour = cleanVal((idxTour >= 0 && cols[idxTour]) ? cols[idxTour] : cols[1]);
 
                     if (!tour) continue;
 
+                    const pasajeroVal = cleanVal(idxPasajero >= 0 ? cols[idxPasajero] : '');
                     const moneda = cleanVal(idxMoneda >= 0 ? cols[idxMoneda] : '');
                     const tc = cleanVal(idxTC >= 0 ? cols[idxTC] : '');
 
                     let intAdulto = cleanVal(idxIntAdulto >= 0 ? cols[idxIntAdulto] : '');
                     let intMenor = cleanVal(idxIntMenor >= 0 ? cols[idxIntMenor] : '');
+                    const intGen = cleanVal(idxIntGen >= 0 ? cols[idxIntGen] : '');
 
                     let nacAdulto = cleanVal(idxNacAdulto >= 0 ? cols[idxNacAdulto] : '');
                     let nacMenor = cleanVal(idxNacMenor >= 0 ? cols[idxNacMenor] : '');
+                    const nacGen = cleanVal(idxNacGen >= 0 ? cols[idxNacGen] : '');
 
                     const genAdulto = cleanVal(idxAdulto >= 0 ? cols[idxAdulto] : '');
                     const genMenor = cleanVal(idxMenor >= 0 ? cols[idxMenor] : '');
 
-                    if (!intAdulto && genAdulto) intAdulto = genAdulto;
-                    if (!intMenor && genMenor) intMenor = genMenor;
+                    // Match passenger types
+                    const isAdultOnly = pasajeroVal.toLowerCase().includes('adult');
+                    const isChildOnly = pasajeroVal.toLowerCase().includes('menor') || pasajeroVal.toLowerCase().includes('niñ');
+
+                    if (isAdultOnly) {
+                        if (!intAdulto && intGen) intAdulto = intGen;
+                        if (!intAdulto && genAdulto) intAdulto = genAdulto;
+                        if (!nacAdulto && nacGen) nacAdulto = nacGen;
+                    } else if (isChildOnly) {
+                        if (!intMenor && intGen) intMenor = intGen;
+                        if (!intMenor && genMenor) intMenor = genMenor;
+                        if (!nacMenor && nacGen) nacMenor = nacGen;
+                    } else {
+                        if (!intAdulto && intGen) intAdulto = intGen;
+                        if (!intAdulto && genAdulto) intAdulto = genAdulto;
+                        if (!intMenor && genMenor) intMenor = genMenor;
+                        if (!nacAdulto && nacGen) nacAdulto = nacGen;
+                        if (!nacAdulto && genAdulto) nacAdulto = genAdulto;
+                        if (!nacMenor && nacGen) nacMenor = nacGen;
+                    }
 
                     let n1 = cleanVal(idxNota1 >= 0 ? cols[idxNota1] : '');
                     let n2 = cleanVal(idxNota2 >= 0 ? cols[idxNota2] : '');
-
                     if (!n1 && !n2 && idxNotaGen >= 0) {
                         n1 = cleanVal(cols[idxNotaGen]);
                     }
 
-                    parsed.push({
-                        id: i,
-                        operador: op || 'Operador',
-                        tour: tour,
-                        moneda: moneda,
-                        tc: tc,
-                        intAdulto: intAdulto,
-                        intMenor: intMenor,
-                        nacAdulto: nacAdulto,
-                        nacMenor: nacMenor,
-                        nota1: n1,
-                        nota2: n2
-                    });
+                    // Key to match Tour / Parque under Operador into one unified entry
+                    const mapKey = `${op.toLowerCase()}:::${tour.toLowerCase()}`;
+
+                    if (toursMap.has(mapKey)) {
+                        const existing = toursMap.get(mapKey);
+                        if (!existing.intAdulto && intAdulto) existing.intAdulto = intAdulto;
+                        if (!existing.intMenor && intMenor) existing.intMenor = intMenor;
+                        if (!existing.nacAdulto && nacAdulto) existing.nacAdulto = nacAdulto;
+                        if (!existing.nacMenor && nacMenor) existing.nacMenor = nacMenor;
+                        if (!existing.moneda && moneda) existing.moneda = moneda;
+                        if (!existing.tc && tc) existing.tc = tc;
+                        if (pasajeroVal && !existing.pasajeroRaw.toLowerCase().includes(pasajeroVal.toLowerCase())) {
+                            existing.pasajeroRaw += (existing.pasajeroRaw ? ', ' : '') + pasajeroVal;
+                        }
+                        if (n1 && !existing.nota1.includes(n1)) existing.nota1 = existing.nota1 ? `${existing.nota1} • ${n1}` : n1;
+                        if (n2 && !existing.nota2.includes(n2)) existing.nota2 = existing.nota2 ? `${existing.nota2} • ${n2}` : n2;
+                    } else {
+                        toursMap.set(mapKey, {
+                            id: i,
+                            operador: op,
+                            tour: tour,
+                            pasajeroRaw: pasajeroVal,
+                            moneda: moneda,
+                            tc: tc,
+                            intAdulto: intAdulto,
+                            intMenor: intMenor,
+                            nacAdulto: nacAdulto,
+                            nacMenor: nacMenor,
+                            nota1: n1,
+                            nota2: n2
+                        });
+                    }
                 }
 
+                const parsed = Array.from(toursMap.values());
                 return parsed.length > 0 ? parsed : null;
             } catch (err) {
                 console.error("Error parsing TSV:", err);
@@ -506,27 +549,27 @@
             const nacAd = formatPrice(item.nacAdulto, defaultCurr || 'MXN');
             const nacMn = formatPrice(item.nacMenor, defaultCurr || 'MXN');
 
-            // International Block (Replaced Ad: with Costo:)
+            // International Block
             if (intAd || intMn) {
                 pricesHtml += `
                     <div class="flex flex-col text-xs">
-                        <span class="text-[10px] text-zinc-400 uppercase font-semibold">Internacional</span>
-                        <div class="flex items-center gap-2">
-                            ${intAd ? `<span class="font-semibold text-zinc-900"><span class="text-[10px] font-normal text-zinc-500">Costo:</span> ${intAd}</span>` : ''}
-                            ${intMn ? `<span class="text-zinc-600"><span class="text-[10px] font-normal text-zinc-500">Mn:</span> ${intMn}</span>` : ''}
+                        <span class="text-[10px] text-zinc-400 uppercase font-semibold">Precio Internacional</span>
+                        <div class="flex items-center gap-2.5 mt-0.5">
+                            ${intAd ? `<span class="font-medium text-zinc-900"><span class="text-[10px] text-zinc-500 font-normal">Costo Adulto:</span> ${intAd}</span>` : ''}
+                            ${intMn ? `<span class="text-zinc-700"><span class="text-[10px] text-zinc-500 font-normal">Costo Menor:</span> ${intMn}</span>` : ''}
                         </div>
                     </div>
                 `;
             }
 
-            // National Block (Replaced Ad: with Costo:)
+            // National Block
             if (nacAd || nacMn) {
                 pricesHtml += `
                     <div class="flex flex-col text-xs">
-                        <span class="text-[10px] text-zinc-400 uppercase font-semibold">Nacional</span>
-                        <div class="flex items-center gap-2">
-                            ${nacAd ? `<span class="font-semibold text-zinc-900"><span class="text-[10px] font-normal text-zinc-500">Costo:</span> ${nacAd}</span>` : ''}
-                            ${nacMn ? `<span class="text-zinc-600"><span class="text-[10px] font-normal text-zinc-500">Mn:</span> ${nacMn}</span>` : ''}
+                        <span class="text-[10px] text-zinc-400 uppercase font-semibold">Precio Nacional</span>
+                        <div class="flex items-center gap-2.5 mt-0.5">
+                            ${nacAd ? `<span class="font-medium text-zinc-900"><span class="text-[10px] text-zinc-500 font-normal">Costo Adulto:</span> ${nacAd}</span>` : ''}
+                            ${nacMn ? `<span class="text-zinc-700"><span class="text-[10px] text-zinc-500 font-normal">Costo Menor:</span> ${nacMn}</span>` : ''}
                         </div>
                     </div>
                 `;
@@ -536,8 +579,8 @@
             if (!isInvalid(item.tc)) {
                 pricesHtml += `
                     <div class="flex flex-col text-xs justify-center">
-                        <span class="text-[10px] text-zinc-400 uppercase font-semibold">T. Cambio</span>
-                        <span class="font-medium text-zinc-700">${item.tc}</span>
+                        <span class="text-[10px] text-zinc-400 uppercase font-semibold">Tipo de Cambio</span>
+                        <span class="font-medium text-zinc-700 mt-0.5">${item.tc}</span>
                     </div>
                 `;
             }
@@ -549,6 +592,24 @@
             return pricesHtml;
         }
 
+        // Helper to generate passenger badges next to tour name
+        function getPassengerBadgesHtml(item) {
+            const rawPas = (item.pasajeroRaw || '').toLowerCase();
+            const hasAdult = !isInvalid(item.intAdulto) || !isInvalid(item.nacAdulto) || rawPas.includes('adult');
+            const hasChild = !isInvalid(item.intMenor) || !isInvalid(item.nacMenor) || rawPas.includes('menor') || rawPas.includes('niñ');
+
+            let text = 'General';
+            if (hasAdult && hasChild) {
+                text = 'Adultos y Menores';
+            } else if (hasAdult) {
+                text = 'Adultos';
+            } else if (hasChild) {
+                text = 'Menores';
+            }
+
+            return `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-zinc-100 text-zinc-700 border border-zinc-200/80 shrink-0"><i class="fa-solid fa-users text-[9px] mr-1 text-zinc-400"></i>${text}</span>`;
+        }
+
         // Integrated Notes Generator (Nota 1 + Nota 2 combined under NOTA:)
         function buildNotesHtml(item) {
             const n1 = cleanVal(item.nota1);
@@ -557,26 +618,60 @@
 
             if (notesArray.length === 0) return '';
 
-            return `<p class="text-[11px] text-zinc-500"><span class="font-semibold text-zinc-600">NOTA:</span> ${notesArray.join(' • ')}</p>`;
+            return `<p class="text-[11px] text-zinc-500"><span class="font-semibold text-zinc-700">NOTA:</span> ${notesArray.join(' • ')}</p>`;
         }
 
-        // List row generator
+        // List row generator - unified single box layout
         function buildTourRowHtml(item) {
             const prices = buildTourPricesHtml(item);
             const notes = buildNotesHtml(item);
+            const badges = getPassengerBadgesHtml(item);
 
             return `
-                <div class="px-4 py-3.5 hover:bg-zinc-50/80 transition flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    <!-- Tour Name & Integrated Notes -->
-                    <div class="space-y-1 max-w-xl">
-                        <h3 class="text-xs sm:text-sm font-semibold text-zinc-800">${item.tour}</h3>
-                        ${notes ? `<div class="pt-0.5">${notes}</div>` : ''}
+                <div class="p-4 hover:bg-zinc-50/50 transition flex flex-col gap-3">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div class="flex items-center flex-wrap gap-2">
+                            <h3 class="text-xs sm:text-sm font-bold text-zinc-900">${item.tour}</h3>
+                            ${badges}
+                        </div>
                     </div>
 
-                    <!-- Pricing Info -->
-                    <div class="flex flex-wrap items-center gap-4 border-t md:border-t-0 pt-2 md:pt-0 border-zinc-100 shrink-0">
+                    <!-- Prices section -->
+                    <div class="flex flex-wrap items-center gap-5 pt-1">
                         ${prices}
                     </div>
+
+                    <!-- Integrated Notes -->
+                    ${notes ? `<div class="pt-2 border-t border-zinc-100">${notes}</div>` : ''}
+                </div>
+            `;
+        }
+
+        // Grid card generator - unified single box layout
+        function buildTourCardHtml(item) {
+            const prices = buildTourPricesHtml(item);
+            const notes = buildNotesHtml(item);
+            const badges = getPassengerBadgesHtml(item);
+
+            return `
+                <div class="bg-white rounded-xl border border-zinc-200 p-4 shadow-2xs flex flex-col justify-between space-y-3.5 hover:border-zinc-300 transition">
+                    <div class="space-y-2.5">
+                        <!-- Operator Badge & Passenger Types -->
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider bg-zinc-100 px-2 py-0.5 rounded">${item.operador}</span>
+                            ${badges}
+                        </div>
+
+                        <h3 class="text-xs sm:text-sm font-bold text-zinc-900 leading-snug">${item.tour}</h3>
+                    </div>
+
+                    <!-- Prices -->
+                    <div class="pt-3 border-t border-zinc-100 flex flex-col gap-2.5">
+                        ${prices}
+                    </div>
+
+                    <!-- Integrated Notes -->
+                    ${notes ? `<div class="pt-2 border-t border-zinc-100">${notes}</div>` : ''}
                 </div>
             `;
         }
@@ -585,13 +680,15 @@
         function buildTourCardHtml(item) {
             const prices = buildTourPricesHtml(item);
             const notes = buildNotesHtml(item);
+            const badges = getPassengerBadgesHtml(item);
 
             return `
                 <div class="bg-white rounded-xl border border-zinc-200 p-4 shadow-2xs flex flex-col justify-between space-y-3 hover:border-zinc-300 transition">
                     <div class="space-y-2">
-                        <!-- Operator Badge & Tour Name -->
-                        <div class="flex items-center justify-between">
+                        <!-- Operator Badge & Passenger Types -->
+                        <div class="flex items-center justify-between gap-2">
                             <span class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider bg-zinc-100 px-2 py-0.5 rounded">${item.operador}</span>
+                            ${badges}
                         </div>
 
                         <h3 class="text-xs sm:text-sm font-bold text-zinc-900 leading-snug">${item.tour}</h3>
